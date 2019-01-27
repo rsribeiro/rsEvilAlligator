@@ -1,0 +1,24 @@
+[package]
+name = "evil_alligator"
+version = "0.1.0"
+authors = ["Ricardo <rsribeiro@outlook.com>"]
+edition = "2018"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.rand]
+version = "*"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.rand]
+version = "*"
+features = ["stdweb"]
+
+[dependencies.quicksilver]
+version = "0.3.5"
+path = "../quicksilver"
+default-features = false
+features = ["fonts", "sounds"]
+
+[profile.release]
+lto = true
+#sem nada web=1046KB/win64=2345KB
+opt-level = 's' #web=798KB/1684KB
+#opt-level = 'z' #web=872KB/1639KB

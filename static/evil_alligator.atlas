@@ -1,0 +1,89 @@
+evil_alligator.png
+size: 1606,1206
+format: RGBA8888
+filter: Nearest,Nearest
+repeat: none
+andador
+  rotate: false
+  xy: 903, 514
+  size: 25, 36
+  orig: 25, 36
+  offset: 0, 0
+  index: -1
+andador_flipped
+  rotate: false
+  xy: 804, 327
+  size: 25, 36
+  orig: 25, 36
+  offset: 0, 0
+  index: -1
+atirador
+  rotate: false
+  xy: 804, 365
+  size: 41, 33
+  orig: 41, 33
+  offset: 0, 0
+  index: -1
+cenario
+  rotate: false
+  xy: 804, 604
+  size: 800, 600
+  orig: 800, 600
+  offset: 0, 0
+  index: -1
+ceu
+  rotate: false
+  xy: 2, 2
+  size: 800, 600
+  orig: 800, 600
+  offset: 0, 0
+  index: -1
+chefe
+  rotate: false
+  xy: 804, 502
+  size: 97, 100
+  orig: 97, 100
+  offset: 0, 0
+  index: -1
+chefeapelao
+  rotate: false
+  xy: 804, 400
+  size: 97, 100
+  orig: 97, 100
+  offset: 0, 0
+  index: -1
+heroi
+  rotate: false
+  xy: 903, 552
+  size: 30, 50
+  orig: 30, 50
+  offset: 0, 0
+  index: -1
+icone
+  rotate: false
+  xy: 935, 570
+  size: 32, 32
+  orig: 32, 32
+  offset: 0, 0
+  index: -1
+inferno
+  rotate: false
+  xy: 2, 604
+  size: 800, 600
+  orig: 800, 600
+  offset: 0, 0
+  index: -1
+potion
+  rotate: false
+  xy: 847, 378
+  size: 17, 20
+  orig: 17, 20
+  offset: 0, 0
+  index: -1
+tiro
+  rotate: false
+  xy: 935, 556
+  size: 12, 12
+  orig: 12, 12
+  offset: 0, 0
+  index: -1
