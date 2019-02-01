@@ -1,30 +1,48 @@
 extern crate quicksilver;
 extern crate rand;
+extern crate specs;
+#[macro_use]
+extern crate specs_derive;
+#[cfg(target_arch = "wasm32")]
+#[macro_use]
+extern crate stdweb;
 
+mod component;
 mod enemy;
-mod entity;
 mod healing;
 mod hero;
-mod hud;
+mod instant;
 mod music;
+mod resources;
+mod system;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use crate::{
-    enemy::{Boss, Shooter, Walker},
-    entity::Entity,
-    healing::Healing,
-    hero::Hero,
-    hud::HUD,
+    component::{
+        Background, Boss, CalculateOutOfBounds, ChangeSprite, Enemy, Fireball, Healing, Hero,
+        Label, Position, Render, Shooter, Velocity,
+    },
+    instant::Instant,
     music::{Music, MusicPlayer},
+    resources::{DeltaTime, KeyboardKeys, LabelVariable, PressedKeys, VariableDictionary},
+    system::{
+        CollisionSystem, FireballSystem, HeroBlinkingSystem, HeroControlSystem, LabelRenderSystem,
+        OutOfBoundsSystem, RenderSystem, WalkSystem,
+    },
 };
 
 use quicksilver::{
-    geom::{Shape, Vector},
-    graphics::{Atlas, Background::Img, Color},
+    geom::Vector,
+    graphics::{Atlas, Color, Font, FontStyle},
     input::{ButtonState, Key},
     lifecycle::{run, Asset, Event, Settings, State, Window},
     Result,
+};
+
+use specs::{
+    world::{EntitiesRes, Index},
+    BitSet, Builder, Entity, RunNow, World,
 };
 
 const GAME_SCREEN_WIDTH: u32 = 800;
@@ -40,22 +58,17 @@ enum GameState {
     GameOver,
 }
 
-enum Background {
-    GameScenario,
-    Victory,
-    Defeat,
-}
-
 struct EvilAlligator {
+    world: World,
     atlas: Rc<RefCell<Asset<Atlas>>>,
-    background: Background,
-    hero: Hero,
+    font: Rc<RefCell<Asset<Font>>>,
+    hero: Entity,
+    pressed_keys: BitSet,
     state: GameState,
     cycle_timer: u64,
     cycle_counter: u32,
-    entities: Vec<Box<Entity>>,
     music_player: MusicPlayer,
-    hud: HUD,
+    last_instant: Instant,
 }
 
 impl State for EvilAlligator {
@@ -63,24 +76,75 @@ impl State for EvilAlligator {
         let atlas = Rc::new(RefCell::new(Asset::new(Atlas::load(
             "evil_alligator.atlas",
         ))));
-        let hero = Hero::new(Rc::clone(&atlas))?;
+        let font = Rc::new(RefCell::new(Asset::new(Font::load("cmunrm.ttf"))));
         let music_player = MusicPlayer::new()?;
-        let hud = HUD::new()?;
+
+        let mut world = World::new();
+        register_components(&mut world);
+        add_resorces(&mut world);
+
+        create_background(&mut world, "cenario".to_string());
+        create_label(
+            &mut world,
+            LabelVariable::FramesPerSecond,
+            FontStyle::new(48.0, Color::BLACK),
+            Vector::new(20, 587),
+        );
+        create_label(
+            &mut world,
+            LabelVariable::HeroLives,
+            FontStyle::new(48.0, Color::BLACK),
+            Vector::new(10, 20),
+        );
+        create_label(
+            &mut world,
+            LabelVariable::Score,
+            FontStyle::new(48.0, Color::BLACK),
+            Vector::new(730, 20),
+        );
+        let hero = hero::create_hero(&mut world);
+
         Ok(EvilAlligator {
+            world,
             atlas,
-            background: Background::GameScenario,
+            font,
             hero,
+            pressed_keys: BitSet::new(),
             state: GameState::Initialiazing,
             cycle_timer: 0,
             cycle_counter: 0,
-            entities: vec![],
             music_player,
-            hud,
+            last_instant: Instant::now(),
         })
     }
 
-    fn update(&mut self, window: &mut Window) -> Result<()> {
+    fn update(&mut self, _window: &mut Window) -> Result<()> {
         if self.state == GameState::Running {
+            let now = Instant::now();
+            let time_step = now.duration_since(self.last_instant.clone());
+            self.last_instant = now;
+            {
+                let mut delta = self.world.write_resource::<DeltaTime>();
+                *delta = DeltaTime {
+                    duration: time_step,
+                };
+            }
+
+            {
+                let self_pressed_keys = self.pressed_keys.clone();
+                let mut pressed_keys = self.world.write_resource::<PressedKeys>();
+                *pressed_keys = PressedKeys {
+                    pressed_keys: self_pressed_keys,
+                };
+            }
+
+            HeroControlSystem.run_now(&self.world.res);
+            WalkSystem.run_now(&self.world.res);
+            FireballSystem.run_now(&self.world.res);
+            CollisionSystem.run_now(&self.world.res);
+            OutOfBoundsSystem.run_now(&self.world.res);
+            HeroBlinkingSystem.run_now(&self.world.res);
+
             if self.cycle_counter < BOSS_CYCLE {
                 if self.cycle_timer == 0 {
                     self.music_player.play_music(Music::NormalMusic)?;
@@ -90,90 +154,79 @@ impl State for EvilAlligator {
                     self.cycle_counter += 1;
                     if self.cycle_counter == BOSS_CYCLE {
                         self.music_player.play_music(Music::BossMusic)?;
-                        let enemy = Boss::new(Rc::clone(&self.atlas))?;
-                        self.entities.push(Box::new(enemy));
+                        enemy::create_boss(&mut self.world);
                     } else {
                         if self.cycle_counter % 2 == 1 {
-                            let enemy = Walker::new(Rc::clone(&self.atlas))?;
-                            self.entities.push(Box::new(enemy));
+                            enemy::create_walker(&mut self.world);
                         } else {
-                            let enemy = Shooter::new(Rc::clone(&self.atlas))?;
-                            self.entities.push(Box::new(enemy));
+                            enemy::create_shooter(&mut self.world);
                         }
                         if self.cycle_counter % 3 == 0 {
-                            let healing = Healing::new(Rc::clone(&self.atlas))?;
-                            self.entities.push(Box::new(healing));
+                            healing::create_healing_potion(&mut self.world);
                         }
                     }
                 }
-            } else if self.entities.is_empty() {
-                self.victory()?;
-            }
-
-            self.hero.update(window)?;
-
-            for entity in self.entities.iter_mut() {
-                entity.update(window, &mut self.hero)?;
-            }
-
-            let mut i = 0;
-            while i != self.entities.len() {
-                if self.entities[i].is_out_of_bounds()
-                    || self.entities[i].collision(&mut self.hero)?
-                {
-                    self.entities.remove(i);
-                } else {
-                    i += 1;
-                }
-            }
-
-            if self.hero.lives() <= 0 {
-                self.defeat()?;
-            }
+            } /* else if self.cycle_counter > BOSS_CYCLE {
+                  if self.world.read_storage::<Boss>().count() == 0 {
+                      self.victory()?;
+                  }
+              }*/
         }
+        self.world.maintain();
         Ok(())
     }
 
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
 
-        let mut running = false;
-        let background = &self.background;
-        self.atlas.borrow_mut().execute(|loaded_atlas| {
-            let cenario = loaded_atlas
-                .get(match background {
-                    Background::GameScenario => "cenario",
-                    Background::Defeat => "inferno",
-                    Background::Victory => "ceu",
-                })
-                .unwrap()
-                .unwrap_image();
-            window.draw(&cenario.area().with_center((400, 300)), Img(&cenario));
-            running = true;
-            Ok(())
-        })?;
+        let mut running = self.state == GameState::Running;
+        if !running {
+            self.atlas.borrow_mut().execute(|_| {
+                running = true;
+                Ok(())
+            })?;
 
-        if self.state == GameState::Initialiazing && running {
-            self.state = GameState::Running;
-        }
-
-        if self.state == GameState::Running {
-            for entity in self.entities.iter_mut() {
-                entity.draw(window)?;
+            if self.state == GameState::Initialiazing && running {
+                self.state = GameState::Running;
+            } else if self.state == GameState::Initialiazing && !running {
+                return Ok(());
             }
-            self.hero.draw(window)?;
-            self.hud
-                .draw(window, self.hero.lives(), self.hero.score())?;
         }
+
+        RenderSystem::new(window, Rc::clone(&self.atlas))?.run_now(&self.world.res);
+        if self.state == GameState::Running {
+            self.update_labels(window)?;
+            LabelRenderSystem::new(window, Rc::clone(&self.font))?.run_now(&self.world.res);
+        }
+        self.world.maintain();
         Ok(())
     }
 
     fn event(&mut self, event: &Event, window: &mut Window) -> Result<()> {
         match self.state {
             GameState::Running => {
-                if let Event::Key(Key::Up, ButtonState::Pressed) = event {
-                    self.hero.jump()?;
-                }
+                match event {
+                    Event::Key(Key::Up, ButtonState::Pressed) => {
+                        self.pressed_keys.add(KeyboardKeys::KeyUp as u32);
+                    }
+                    Event::Key(Key::Up, ButtonState::Released) => {
+                        self.pressed_keys.remove(KeyboardKeys::KeyUp as u32);
+                    }
+                    Event::Key(Key::Left, ButtonState::Pressed) => {
+                        self.pressed_keys.add(KeyboardKeys::KeyLeft as u32);
+                    }
+                    Event::Key(Key::Left, ButtonState::Released) => {
+                        self.pressed_keys.remove(KeyboardKeys::KeyLeft as u32);
+                    }
+                    Event::Key(Key::Right, ButtonState::Pressed) => {
+                        self.pressed_keys.add(KeyboardKeys::KeyRight as u32);
+                    }
+                    Event::Key(Key::Right, ButtonState::Released) => {
+                        self.pressed_keys.remove(KeyboardKeys::KeyRight as u32);
+                    }
+                    _ => {}
+                };
+
                 if let Event::Key(Key::Escape, ButtonState::Pressed) = event {
                     self.defeat()?;
                 }
@@ -195,23 +248,109 @@ impl State for EvilAlligator {
 impl EvilAlligator {
     fn defeat(&mut self) -> Result<()> {
         self.end_game()?;
-        self.background = Background::Defeat;
+        create_background(&mut self.world, "inferno".to_string());
         self.music_player.play_music(Music::GameOverMusic)?;
         Ok(())
     }
 
     fn victory(&mut self) -> Result<()> {
         self.end_game()?;
-        self.background = Background::Victory;
+        create_background(&mut self.world, "ceu".to_string());
         self.music_player.play_music(Music::VictoryMusic)?;
         Ok(())
     }
 
     fn end_game(&mut self) -> Result<()> {
-        self.entities.clear();
+        self.world.delete_all();
         self.state = GameState::GameOver;
         Ok(())
     }
+
+    fn update_labels(&mut self, window: &Window) -> Result<()> {
+        let hero_storage = self.world.read_storage::<Hero>();
+        if let Some(hero) = hero_storage.get(self.hero) {
+            let mut dict = self.world.write_resource::<VariableDictionary>();
+            *dict = VariableDictionary {
+                dictionary: [
+                    (
+                        LabelVariable::FramesPerSecond,
+                        format!("{:.0}", window.average_fps()),
+                    ),
+                    (LabelVariable::HeroLives, format!("{}", hero.lives)),
+                    (LabelVariable::Score, format!("{}", hero.score)),
+                ]
+                .iter()
+                .cloned()
+                .collect(),
+            }
+        }
+        Ok(())
+    }
+}
+
+fn register_components(world: &mut World) {
+    world.register::<Position>();
+    world.register::<Velocity>();
+    world.register::<Render>();
+    world.register::<Shooter>();
+    world.register::<Label>();
+    world.register::<Hero>();
+    world.register::<Boss>();
+    world.register::<ChangeSprite>();
+    world.register::<Enemy>();
+    world.register::<Healing>();
+    world.register::<Background>();
+    world.register::<CalculateOutOfBounds>();
+    world.register::<Fireball>();
+}
+
+fn add_resorces(world: &mut World) {
+    world.add_resource(DeltaTime {
+        duration: Duration::new(0, 0),
+    });
+    world.add_resource(VariableDictionary {
+        dictionary: [
+            (LabelVariable::FramesPerSecond, "60".to_string()),
+            (LabelVariable::HeroLives, "5".to_string()),
+            (LabelVariable::Score, "0".to_string()),
+        ]
+        .iter()
+        .cloned()
+        .collect(),
+    });
+    world.add_resource(PressedKeys {
+        pressed_keys: BitSet::new(),
+    });
+}
+
+fn create_background(world: &mut World, sprite: String) -> Entity {
+    world
+        .create_entity()
+        .with(Background)
+        .with(Position {
+            position: Vector::new(400, 300),
+        })
+        .with(Render {
+            sprite: sprite,
+            bounding_box: None,
+        })
+        .build()
+}
+
+fn create_label(
+    world: &mut World,
+    variable: LabelVariable,
+    font_style: FontStyle,
+    position: Vector,
+) -> Entity {
+    world
+        .create_entity()
+        .with(Label {
+            bind_variable: variable,
+            font_style: font_style,
+        })
+        .with(Position { position: position })
+        .build()
 }
 
 fn main() {
@@ -220,6 +359,7 @@ fn main() {
         Vector::new(GAME_SCREEN_WIDTH, GAME_SCREEN_HEIGHT),
         Settings {
             icon_path: Some(ICON),
+            show_cursor: false,
             ..Settings::default()
         },
     );

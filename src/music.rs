@@ -4,10 +4,10 @@ use quicksilver::{
     Future, Result,
 };
 
-const NORMAL_MUSIC: &str = "normal.ogg";
-const BOSS_MUSIC: &str = "boss.ogg";
-const GAME_OVER_MUSIC: &str = "gameover.ogg";
-const VICTORY_MUSIC: &str = "victory.ogg";
+const NORMAL_MUSIC: &str = "music/normal.ogg";
+const BOSS_MUSIC: &str = "music/boss.ogg";
+const GAME_OVER_MUSIC: &str = "music/gameover.ogg";
+const VICTORY_MUSIC: &str = "music/victory.ogg";
 
 pub enum Music {
     NormalMusic,

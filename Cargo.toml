@@ -1,18 +1,25 @@
 [package]
 name = "evil_alligator"
-version = "0.1.0"
-authors = ["Ricardo <rsribeiro@outlook.com>"]
+version = "0.2.0"
+authors = ["Ricardo Ribeiro <rsribeiro916@gmail.com>"]
 edition = "2018"
 
+[dependencies]
+specs = "0.14.3"
+specs-derive = "0.4.0"
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.rand]
-version = "*"
+version = "0.6.5"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+stdweb = "0.4.13"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.rand]
-version = "*"
+version = "0.6.5"
 features = ["stdweb"]
 
 [dependencies.quicksilver]
-version = "0.3.5"
+version = "0.3.6"
 path = "../quicksilver"
 default-features = false
 features = ["fonts", "sounds"]
