@@ -32,6 +32,9 @@ pub struct Render {
 #[storage(VecStorage)]
 pub struct Shooter {
     pub maximum_fireballs: i32,
+    pub fireball_amount: i32,
+    pub coefficient_1: f32,
+    pub coefficient_2: f32,
 }
 
 #[derive(Component, Debug)]
@@ -63,6 +66,7 @@ pub struct Boss {
 #[storage(VecStorage)]
 pub struct ChangeSprite {
     pub new_sprite: String,
+    pub do_change: bool,
 }
 
 #[derive(Component, Debug)]

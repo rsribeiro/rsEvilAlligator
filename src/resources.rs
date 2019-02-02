@@ -10,14 +10,14 @@ pub enum LabelVariable {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
-pub enum GameFlag {
+pub enum GameStateFlag {
     Victory = 1,
     Defeat = 2,
 }
 
 #[derive(Default)]
-pub struct GameStateFlags {
-    pub flags: BitSet,
+pub struct GameStateFlagRes {
+    pub flag: Option<GameStateFlag>,
 }
 
 #[derive(Default)]
@@ -34,8 +34,6 @@ pub enum KeyboardKeys {
     KeyUp = 1,
     KeyLeft = 2,
     KeyRight = 4,
-    KeyEscape = 8,
-    KeyEnter = 16,
 }
 
 #[derive(Default)]

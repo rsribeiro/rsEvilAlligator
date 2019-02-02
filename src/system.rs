@@ -1,23 +1,22 @@
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use crate::{
     component::{
-        Boss, CalculateOutOfBounds, Enemy, Fireball, Healing, Hero, Label, Position, Render,
-        Shooter, Velocity,
+        Boss, CalculateOutOfBounds, ChangeSprite, Enemy, Fireball, Healing, Hero, Label, Position,
+        Render, Shooter, Velocity,
     },
-    resources::{DeltaTime, KeyboardKeys, LabelVariable, PressedKeys, VariableDictionary},
+    resources::{
+        DeltaTime, GameStateFlag, GameStateFlagRes, KeyboardKeys, PressedKeys, VariableDictionary,
+    },
 };
 
-use specs::{BitSet, Entities, Entity, Read, ReadStorage, System, WriteStorage};
+use specs::{
+    Builder, Entities, Entity, Join, LazyUpdate, Read, ReadStorage, System, Write, WriteStorage,
+};
 
 use quicksilver::{
-    geom::{Rectangle, Shape, Vector},
-    graphics::{Atlas, Background::Img, Font, FontStyle},
+    geom::{Shape, Vector},
+    graphics::{Atlas, Background::Img, Font},
     lifecycle::{Asset, Window},
     Result,
 };
@@ -35,35 +34,52 @@ impl<'a> RenderSystem<'a> {
         Ok(RenderSystem { window, atlas })
     }
 
-    fn render(&mut self, render: &mut Render, position: Vector) -> Result<()> {
+    fn do_render(&mut self, render: &mut Render, sprite: String, position: Vector) -> Result<()> {
         let window = &mut self.window;
         self.atlas.borrow_mut().execute(|loaded_atlas| {
-            let image = loaded_atlas.get(&render.sprite).unwrap().unwrap_image();
+            let image = loaded_atlas.get(&sprite).unwrap().unwrap_image();
             let area = image.area();
             render.bounding_box = Some(area);
             window.draw(&area.with_center(position), Img(&image));
             Ok(())
         })
     }
+
+    fn get_sprite(render: &Render, change_sprite: Option<&ChangeSprite>) -> String {
+        if let Some(change_sprite) = change_sprite {
+            if change_sprite.do_change {
+                change_sprite.new_sprite.clone()
+            } else {
+                render.sprite.clone()
+            }
+        } else {
+            render.sprite.clone()
+        }
+    }
 }
 
 impl<'a> System<'a> for RenderSystem<'a> {
     type SystemData = (
+        Entities<'a>,
         ReadStorage<'a, Position>,
         WriteStorage<'a, Render>,
         ReadStorage<'a, Hero>,
+        ReadStorage<'a, ChangeSprite>,
     );
 
-    fn run(&mut self, (pos, mut render, hero): Self::SystemData) {
-        use specs::Join;
+    fn run(&mut self, (entities, pos, mut render, hero, change_sprite): Self::SystemData) {
+        for (e, pos, render) in (&entities, &pos, &mut render).join() {
+            let hero: Option<&Hero> = hero.get(e);
+            let change_sprite: Option<&ChangeSprite> = change_sprite.get(e);
 
-        for (pos, render, _) in (&pos, &mut render, !&hero).join() {
-            self.render(render, pos.position).unwrap();
-        }
-
-        for (pos, render, hero) in (&pos, &mut render, &hero).join() {
-            if hero.render {
-                self.render(render, pos.position).unwrap();
+            if let Some(hero) = hero {
+                if hero.render {
+                    let sprite = RenderSystem::get_sprite(render, change_sprite);
+                    self.do_render(render, sprite, pos.position).unwrap();
+                }
+            } else {
+                let sprite = RenderSystem::get_sprite(render, change_sprite);
+                self.do_render(render, sprite, pos.position).unwrap();
             }
         }
     }
@@ -79,7 +95,6 @@ impl<'a> System<'a> for WalkSystem {
     );
 
     fn run(&mut self, (delta, vel, mut pos): Self::SystemData) {
-        use specs::Join;
         let time_step =
             delta.duration.as_secs() as f32 + (delta.duration.subsec_nanos() as f32 * 1e-9);
 
@@ -108,8 +123,6 @@ impl<'a> System<'a> for LabelRenderSystem<'a> {
     );
 
     fn run(&mut self, (dict, pos, render): Self::SystemData) {
-        use specs::Join;
-
         for (pos, render) in (&pos, &render).join() {
             let window = &mut self.window;
             self.font
@@ -141,8 +154,6 @@ impl<'a> System<'a> for HeroControlSystem {
     );
 
     fn run(&mut self, (pressed_keys, mut hero, mut pos, mut vel): Self::SystemData) {
-        use specs::Join;
-
         for (vel, pos, hero) in (&mut vel, &mut pos, &mut hero).join() {
             vel.velocity.y = if pos.position.y >= 425.0 {
                 if pressed_keys
@@ -198,8 +209,6 @@ impl<'a> System<'a> for OutOfBoundsSystem {
     );
 
     fn run(&mut self, (entities, hero, oob, mut pos): Self::SystemData) {
-        use specs::Join;
-
         for (_, pos, _, _) in (&entities, &mut pos, &oob, &hero).join() {
             pos.position.x = if pos.position.x < 15.0 {
                 15.0
@@ -243,7 +252,6 @@ impl CollisionSystem {
                 entities.delete(e).unwrap();
             } else if enemy_body_area.overlaps(&hero_body_area) {
                 if !hero.blinking {
-                    println!("porrada");
                     hero.lives -= 1;
                     hero.blinking = true;
                 }
@@ -277,7 +285,35 @@ impl CollisionSystem {
         }
     }
 
-    fn hero_boss_collision(
+    fn hero_fireball_collision(
+        hero: &mut Hero,
+        hero_render: &Render,
+        fireball_render: &Render,
+        hero_pos: Vector,
+        fireball_pos: Vector,
+        entities: &Entities,
+        e: Entity,
+    ) -> bool {
+        if hero_render.bounding_box.is_some() && fireball_render.bounding_box.is_some() {
+            let hero_bounding_box = hero_render.bounding_box.unwrap().with_center(hero_pos);
+            let fireball_bounding_box = fireball_render
+                .bounding_box
+                .unwrap()
+                .with_center(fireball_pos);
+
+            if hero_bounding_box.overlaps(&fireball_bounding_box) {
+                if !hero.blinking {
+                    hero.blinking = true;
+                    hero.lives -= 1;
+                    entities.delete(e).unwrap();
+                }
+            }
+        }
+        hero.blinking
+    }
+
+    fn hero_boss_collision<'a>(
+        flag: &mut Write<'a, GameStateFlagRes>,
         hero: &mut Hero,
         enemy: &Enemy,
         boss: &mut Boss,
@@ -287,6 +323,8 @@ impl CollisionSystem {
         enemy_pos: Vector,
         entities: &Entities,
         e: Entity,
+        change_sprite: Option<&mut ChangeSprite>,
+        shooter: Option<&mut Shooter>,
     ) -> bool {
         if hero_render.bounding_box.is_some() && enemy_render.bounding_box.is_some() {
             let (hero_body_area, hero_feet_area) =
@@ -301,12 +339,20 @@ impl CollisionSystem {
                 hero.reset_position = true;
                 hero.blinking = true;
                 boss.lives -= 1;
+                boss.normal_lives -= 1;
                 if boss.lives == 0 {
+                    flag.flag = Some(GameStateFlag::Victory);
                     entities.delete(e).unwrap();
+                } else if boss.normal_lives == 0 {
+                    if let Some(change_sprite) = change_sprite {
+                        change_sprite.do_change = true;
+                    }
+                    if let Some(shooter) = shooter {
+                        shooter.maximum_fireballs += 2;
+                    }
                 }
             } else if enemy_body_area.overlaps(&hero_body_area) {
                 if !hero.blinking {
-                    println!("porrada");
                     hero.lives -= 1;
                     hero.blinking = true;
                 }
@@ -318,6 +364,7 @@ impl CollisionSystem {
 
 impl<'a> System<'a> for CollisionSystem {
     type SystemData = (
+        Write<'a, GameStateFlagRes>,
         Entities<'a>,
         WriteStorage<'a, Hero>,
         ReadStorage<'a, Enemy>,
@@ -325,14 +372,27 @@ impl<'a> System<'a> for CollisionSystem {
         ReadStorage<'a, Healing>,
         ReadStorage<'a, Position>,
         ReadStorage<'a, Render>,
+        WriteStorage<'a, ChangeSprite>,
+        WriteStorage<'a, Shooter>,
+        ReadStorage<'a, Fireball>,
     );
 
     fn run(
         &mut self,
-        (entities, mut hero, enemy, mut boss, healing, pos, render): Self::SystemData,
+        (
+            mut flag,
+            entities,
+            mut hero,
+            enemy,
+            mut boss,
+            healing,
+            pos,
+            render,
+            mut change_sprite,
+            mut shooter,
+            fireball,
+        ): Self::SystemData,
     ) {
-        use specs::Join;
-
         for (e_hero, hero, hero_pos, hero_render) in (&entities, &mut hero, &pos, &render).join() {
             for (e, enemy_pos, enemy_render, enemy) in (&entities, &pos, &render, &enemy).join() {
                 let boss: Option<&mut Boss> = boss.get_mut(e);
@@ -350,7 +410,10 @@ impl<'a> System<'a> for CollisionSystem {
                         break;
                     }
                 } else if boss.is_some() {
+                    let change_sprite: Option<&mut ChangeSprite> = change_sprite.get_mut(e);
+                    let shooter: Option<&mut Shooter> = shooter.get_mut(e);
                     if CollisionSystem::hero_boss_collision(
+                        &mut flag,
                         hero,
                         enemy,
                         boss.unwrap(),
@@ -360,6 +423,8 @@ impl<'a> System<'a> for CollisionSystem {
                         enemy_pos.position,
                         &entities,
                         e,
+                        change_sprite,
+                        shooter,
                     ) {
                         break;
                     }
@@ -381,7 +446,24 @@ impl<'a> System<'a> for CollisionSystem {
                 );
             }
 
+            for (e, fireball_pos, fireball_render, _) in
+                (&entities, &pos, &render, &fireball).join()
+            {
+                if CollisionSystem::hero_fireball_collision(
+                    hero,
+                    hero_render,
+                    fireball_render,
+                    hero_pos.position,
+                    fireball_pos.position,
+                    &entities,
+                    e,
+                ) {
+                    break;
+                }
+            }
+
             if hero.lives == 0 {
+                flag.flag = Some(GameStateFlag::Defeat);
                 entities.delete(e_hero).unwrap();
             }
         }
@@ -394,8 +476,6 @@ impl<'a> System<'a> for HeroBlinkingSystem {
     type SystemData = (Read<'a, DeltaTime>, WriteStorage<'a, Hero>);
 
     fn run(&mut self, (delta_time, mut hero): Self::SystemData) {
-        use specs::Join;
-
         for hero in (&mut hero).join() {
             if hero.blinking {
                 hero.blink_timer += delta_time.duration;
@@ -423,18 +503,45 @@ impl<'a> System<'a> for FireballSystem {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, Position>,
-        ReadStorage<'a, Shooter>,
+        WriteStorage<'a, Shooter>,
         ReadStorage<'a, Fireball>,
+        Read<'a, LazyUpdate>,
     );
 
-    fn run(&mut self, (entities, mut position, shooter, fireball): Self::SystemData) {
-        use specs::Join;
+    fn run(&mut self, (entities, mut pos, mut shooter, fireball, lazy): Self::SystemData) {
+        for (e, pos, shooter) in (&entities, &mut pos, &mut shooter).join() {
+            shooter.fireball_amount = 0;
+            for fireball in (&fireball).join() {
+                if fireball.owner_id == e.id() {
+                    shooter.fireball_amount += 1;
+                }
+            }
 
-        // for shooter in (&shooter).join() {
-        //     let mut fireball_count = 0;
-        //     for fireball in (&fireball).join() {
+            while shooter.fireball_amount < shooter.maximum_fireballs {
+                let randomness = rand::random::<f32>() / 12.;
+                lazy.create_entity(&entities)
+                    .with(Fireball { owner_id: e.id() })
+                    .with(CalculateOutOfBounds)
+                    .with(Render {
+                        sprite: "tiro".to_string(),
+                        bounding_box: None,
+                    })
+                    .with(Position {
+                        position: pos.position,
+                    })
+                    .with(Velocity {
+                        velocity: Vector::new(
+                            -1000.0
+                                * ((shooter.coefficient_1 * (shooter.fireball_amount + 1) as f32
+                                    + shooter.coefficient_2)
+                                    + randomness),
+                            0.0,
+                        ),
+                    })
+                    .build();
 
-        //     }
-        // }
+                shooter.fireball_amount += 1;
+            }
+        }
     }
 }

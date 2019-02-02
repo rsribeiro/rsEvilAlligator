@@ -26,6 +26,5 @@ features = ["fonts", "sounds"]
 
 [profile.release]
 lto = true
-#sem nada web=1046KB/win64=2345KB
-opt-level = 's' #web=798KB/1684KB
-#opt-level = 'z' #web=872KB/1639KB
+opt-level = 's' #web=696KB/exe=1796KB
+#opt-level = 'z' #web=872KB/exe=1639KB

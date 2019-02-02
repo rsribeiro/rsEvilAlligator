@@ -25,7 +25,10 @@ use crate::{
     },
     instant::Instant,
     music::{Music, MusicPlayer},
-    resources::{DeltaTime, KeyboardKeys, LabelVariable, PressedKeys, VariableDictionary},
+    resources::{
+        DeltaTime, GameStateFlag, GameStateFlagRes, KeyboardKeys, LabelVariable, PressedKeys,
+        VariableDictionary,
+    },
     system::{
         CollisionSystem, FireballSystem, HeroBlinkingSystem, HeroControlSystem, LabelRenderSystem,
         OutOfBoundsSystem, RenderSystem, WalkSystem,
@@ -40,10 +43,7 @@ use quicksilver::{
     Result,
 };
 
-use specs::{
-    world::{EntitiesRes, Index},
-    BitSet, Builder, Entity, RunNow, World,
-};
+use specs::{BitSet, Builder, Entity, RunNow, World};
 
 const GAME_SCREEN_WIDTH: u32 = 800;
 const GAME_SCREEN_HEIGHT: u32 = 600;
@@ -63,7 +63,6 @@ struct EvilAlligator {
     atlas: Rc<RefCell<Asset<Atlas>>>,
     font: Rc<RefCell<Asset<Font>>>,
     hero: Entity,
-    pressed_keys: BitSet,
     state: GameState,
     cycle_timer: u64,
     cycle_counter: u32,
@@ -109,7 +108,6 @@ impl State for EvilAlligator {
             atlas,
             font,
             hero,
-            pressed_keys: BitSet::new(),
             state: GameState::Initialiazing,
             cycle_timer: 0,
             cycle_counter: 0,
@@ -120,30 +118,7 @@ impl State for EvilAlligator {
 
     fn update(&mut self, _window: &mut Window) -> Result<()> {
         if self.state == GameState::Running {
-            let now = Instant::now();
-            let time_step = now.duration_since(self.last_instant.clone());
-            self.last_instant = now;
-            {
-                let mut delta = self.world.write_resource::<DeltaTime>();
-                *delta = DeltaTime {
-                    duration: time_step,
-                };
-            }
-
-            {
-                let self_pressed_keys = self.pressed_keys.clone();
-                let mut pressed_keys = self.world.write_resource::<PressedKeys>();
-                *pressed_keys = PressedKeys {
-                    pressed_keys: self_pressed_keys,
-                };
-            }
-
-            HeroControlSystem.run_now(&self.world.res);
-            WalkSystem.run_now(&self.world.res);
-            FireballSystem.run_now(&self.world.res);
-            CollisionSystem.run_now(&self.world.res);
-            OutOfBoundsSystem.run_now(&self.world.res);
-            HeroBlinkingSystem.run_now(&self.world.res);
+            self.update_time_step()?;
 
             if self.cycle_counter < BOSS_CYCLE {
                 if self.cycle_timer == 0 {
@@ -166,11 +141,22 @@ impl State for EvilAlligator {
                         }
                     }
                 }
-            } /* else if self.cycle_counter > BOSS_CYCLE {
-                  if self.world.read_storage::<Boss>().count() == 0 {
-                      self.victory()?;
-                  }
-              }*/
+            }
+
+            HeroControlSystem.run_now(&self.world.res);
+            WalkSystem.run_now(&self.world.res);
+            FireballSystem.run_now(&self.world.res);
+            CollisionSystem.run_now(&self.world.res);
+            OutOfBoundsSystem.run_now(&self.world.res);
+            HeroBlinkingSystem.run_now(&self.world.res);
+
+            let flag = self.world.read_resource::<GameStateFlagRes>().flag;
+            if let Some(f) = flag {
+                match f {
+                    GameStateFlag::Victory => self.victory(),
+                    GameStateFlag::Defeat => self.defeat(),
+                }?;
+            }
         }
         self.world.maintain();
         Ok(())
@@ -205,30 +191,35 @@ impl State for EvilAlligator {
     fn event(&mut self, event: &Event, window: &mut Window) -> Result<()> {
         match self.state {
             GameState::Running => {
+                let mut pressed_keys = self.world.write_resource::<PressedKeys>();
+                let pressed_keys = &mut pressed_keys.pressed_keys;
                 match event {
                     Event::Key(Key::Up, ButtonState::Pressed) => {
-                        self.pressed_keys.add(KeyboardKeys::KeyUp as u32);
+                        pressed_keys.add(KeyboardKeys::KeyUp as u32);
                     }
                     Event::Key(Key::Up, ButtonState::Released) => {
-                        self.pressed_keys.remove(KeyboardKeys::KeyUp as u32);
+                        pressed_keys.remove(KeyboardKeys::KeyUp as u32);
                     }
                     Event::Key(Key::Left, ButtonState::Pressed) => {
-                        self.pressed_keys.add(KeyboardKeys::KeyLeft as u32);
+                        pressed_keys.add(KeyboardKeys::KeyLeft as u32);
                     }
                     Event::Key(Key::Left, ButtonState::Released) => {
-                        self.pressed_keys.remove(KeyboardKeys::KeyLeft as u32);
+                        pressed_keys.remove(KeyboardKeys::KeyLeft as u32);
                     }
                     Event::Key(Key::Right, ButtonState::Pressed) => {
-                        self.pressed_keys.add(KeyboardKeys::KeyRight as u32);
+                        pressed_keys.add(KeyboardKeys::KeyRight as u32);
                     }
                     Event::Key(Key::Right, ButtonState::Released) => {
-                        self.pressed_keys.remove(KeyboardKeys::KeyRight as u32);
+                        pressed_keys.remove(KeyboardKeys::KeyRight as u32);
                     }
                     _ => {}
                 };
 
                 if let Event::Key(Key::Escape, ButtonState::Pressed) = event {
-                    self.defeat()?;
+                    let mut flag = self.world.write_resource::<GameStateFlagRes>();
+                    *flag = GameStateFlagRes {
+                        flag: Some(GameStateFlag::Defeat),
+                    };
                 }
             }
             GameState::GameOver => {
@@ -246,6 +237,19 @@ impl State for EvilAlligator {
 }
 
 impl EvilAlligator {
+    fn update_time_step(&mut self) -> Result<()> {
+        let now = Instant::now();
+        let time_step = now.duration_since(self.last_instant.clone());
+        self.last_instant = now;
+        {
+            let mut delta = self.world.write_resource::<DeltaTime>();
+            *delta = DeltaTime {
+                duration: time_step,
+            };
+        }
+        Ok(())
+    }
+
     fn defeat(&mut self) -> Result<()> {
         self.end_game()?;
         create_background(&mut self.world, "inferno".to_string());
@@ -305,6 +309,7 @@ fn register_components(world: &mut World) {
 }
 
 fn add_resorces(world: &mut World) {
+    world.add_resource(GameStateFlagRes { flag: None });
     world.add_resource(DeltaTime {
         duration: Duration::new(0, 0),
     });
