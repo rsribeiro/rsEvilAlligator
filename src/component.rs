@@ -31,6 +31,7 @@ pub struct Render {
 #[derive(Component, Debug)]
 #[storage(VecStorage)]
 pub struct Shooter {
+    pub projectile_sprite: String,
     pub maximum_fireballs: i32,
     pub fireball_amount: i32,
     pub coefficient_1: f32,
@@ -92,5 +93,5 @@ pub struct CalculateOutOfBounds;
 #[derive(Component, Debug, Default)]
 #[storage(VecStorage)]
 pub struct Fireball {
-    pub owner_id: Index,
+    pub owner_id: Option<Index>,
 }

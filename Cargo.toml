@@ -1,7 +1,7 @@
 [package]
 name = "evil_alligator"
-version = "0.2.0"
-authors = ["Ricardo Ribeiro <rsribeiro916@gmail.com>"]
+version = "0.2.1"
+authors = ["Ricardo Ribeiro <ricardo@souzaribeiro.com>"]
 edition = "2018"
 
 [dependencies]

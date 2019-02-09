@@ -238,7 +238,7 @@ impl CollisionSystem {
         enemy_pos: Vector,
         entities: &Entities,
         e: Entity,
-    ) -> bool {
+    ) {
         if hero_render.bounding_box.is_some() && enemy_render.bounding_box.is_some() {
             let (hero_body_area, hero_feet_area) =
                 crate::hero::get_hero_body_feet_area(hero_render.bounding_box.unwrap(), hero_pos);
@@ -257,7 +257,6 @@ impl CollisionSystem {
                 }
             }
         }
-        hero.blinking
     }
 
     fn hero_healing_collision(
@@ -293,7 +292,7 @@ impl CollisionSystem {
         fireball_pos: Vector,
         entities: &Entities,
         e: Entity,
-    ) -> bool {
+    ) {
         if hero_render.bounding_box.is_some() && fireball_render.bounding_box.is_some() {
             let hero_bounding_box = hero_render.bounding_box.unwrap().with_center(hero_pos);
             let fireball_bounding_box = fireball_render
@@ -309,7 +308,6 @@ impl CollisionSystem {
                 }
             }
         }
-        hero.blinking
     }
 
     fn hero_boss_collision<'a>(
@@ -325,7 +323,7 @@ impl CollisionSystem {
         e: Entity,
         change_sprite: Option<&mut ChangeSprite>,
         shooter: Option<&mut Shooter>,
-    ) -> bool {
+    ) {
         if hero_render.bounding_box.is_some() && enemy_render.bounding_box.is_some() {
             let (hero_body_area, hero_feet_area) =
                 crate::hero::get_hero_body_feet_area(hero_render.bounding_box.unwrap(), hero_pos);
@@ -358,7 +356,6 @@ impl CollisionSystem {
                 }
             }
         }
-        hero.blinking
     }
 }
 
@@ -397,7 +394,7 @@ impl<'a> System<'a> for CollisionSystem {
             for (e, enemy_pos, enemy_render, enemy) in (&entities, &pos, &render, &enemy).join() {
                 let boss: Option<&mut Boss> = boss.get_mut(e);
                 if boss.is_none() {
-                    if CollisionSystem::hero_enemy_collision(
+                    CollisionSystem::hero_enemy_collision(
                         hero,
                         enemy,
                         hero_render,
@@ -406,13 +403,11 @@ impl<'a> System<'a> for CollisionSystem {
                         enemy_pos.position,
                         &entities,
                         e,
-                    ) {
-                        break;
-                    }
+                    );
                 } else if boss.is_some() {
                     let change_sprite: Option<&mut ChangeSprite> = change_sprite.get_mut(e);
                     let shooter: Option<&mut Shooter> = shooter.get_mut(e);
-                    if CollisionSystem::hero_boss_collision(
+                    CollisionSystem::hero_boss_collision(
                         &mut flag,
                         hero,
                         enemy,
@@ -425,9 +420,7 @@ impl<'a> System<'a> for CollisionSystem {
                         e,
                         change_sprite,
                         shooter,
-                    ) {
-                        break;
-                    }
+                    );
                 }
             }
 
@@ -449,7 +442,7 @@ impl<'a> System<'a> for CollisionSystem {
             for (e, fireball_pos, fireball_render, _) in
                 (&entities, &pos, &render, &fireball).join()
             {
-                if CollisionSystem::hero_fireball_collision(
+                CollisionSystem::hero_fireball_collision(
                     hero,
                     hero_render,
                     fireball_render,
@@ -457,9 +450,7 @@ impl<'a> System<'a> for CollisionSystem {
                     fireball_pos.position,
                     &entities,
                     e,
-                ) {
-                    break;
-                }
+                );
             }
 
             if hero.lives == 0 {
@@ -512,7 +503,7 @@ impl<'a> System<'a> for FireballSystem {
         for (e, pos, shooter) in (&entities, &mut pos, &mut shooter).join() {
             shooter.fireball_amount = 0;
             for fireball in (&fireball).join() {
-                if fireball.owner_id == e.id() {
+                if fireball.owner_id.is_some() && fireball.owner_id.unwrap() == e.id() {
                     shooter.fireball_amount += 1;
                 }
             }
@@ -520,10 +511,12 @@ impl<'a> System<'a> for FireballSystem {
             while shooter.fireball_amount < shooter.maximum_fireballs {
                 let randomness = rand::random::<f32>() / 12.;
                 lazy.create_entity(&entities)
-                    .with(Fireball { owner_id: e.id() })
+                    .with(Fireball {
+                        owner_id: Some(e.id()),
+                    })
                     .with(CalculateOutOfBounds)
                     .with(Render {
-                        sprite: "tiro".to_string(),
+                        sprite: shooter.projectile_sprite.clone(),
                         bounding_box: None,
                     })
                     .with(Position {

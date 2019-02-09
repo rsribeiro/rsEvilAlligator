@@ -39,17 +39,13 @@ use quicksilver::{
     geom::Vector,
     graphics::{Atlas, Color, Font, FontStyle},
     input::{ButtonState, Key},
-    lifecycle::{run, Asset, Event, Settings, State, Window},
+    lifecycle::{run, run_with, Asset, Event, Settings, State, Window},
     Result,
 };
 
 use specs::{BitSet, Builder, Entity, RunNow, World};
 
-const GAME_SCREEN_WIDTH: u32 = 800;
-const GAME_SCREEN_HEIGHT: u32 = 600;
-const BOSS_CYCLE: u32 = 11;
-const NEW_BODY_CYCLE: u64 = 210;
-const ICON: &str = "icone.png";
+use rand::{thread_rng, Rng};
 
 #[derive(PartialEq)]
 enum GameState {
@@ -64,84 +60,36 @@ struct EvilAlligator {
     font: Rc<RefCell<Asset<Font>>>,
     hero: Entity,
     state: GameState,
+    boss_cycle: u32,
+    new_body_cycle: u64,
     cycle_timer: u64,
     cycle_counter: u32,
     music_player: MusicPlayer,
     last_instant: Instant,
+    entity_factory: Box<Fn(&mut World, u32) -> Result<()>>,
 }
 
 impl State for EvilAlligator {
     fn new() -> Result<EvilAlligator> {
-        let atlas = Rc::new(RefCell::new(Asset::new(Atlas::load(
-            "evil_alligator.atlas",
-        ))));
-        let font = Rc::new(RefCell::new(Asset::new(Font::load("cmunrm.ttf"))));
-        let music_player = MusicPlayer::new()?;
-
-        let mut world = World::new();
-        register_components(&mut world);
-        add_resorces(&mut world);
-
-        create_background(&mut world, "cenario".to_string());
-        create_label(
-            &mut world,
-            LabelVariable::FramesPerSecond,
-            FontStyle::new(48.0, Color::BLACK),
-            Vector::new(20, 587),
-        );
-        create_label(
-            &mut world,
-            LabelVariable::HeroLives,
-            FontStyle::new(48.0, Color::BLACK),
-            Vector::new(10, 20),
-        );
-        create_label(
-            &mut world,
-            LabelVariable::Score,
-            FontStyle::new(48.0, Color::BLACK),
-            Vector::new(730, 20),
-        );
-        let hero = hero::create_hero(&mut world);
-
-        Ok(EvilAlligator {
-            world,
-            atlas,
-            font,
-            hero,
-            state: GameState::Initialiazing,
-            cycle_timer: 0,
-            cycle_counter: 0,
-            music_player,
-            last_instant: Instant::now(),
-        })
+        let entity_factory = |world: &mut World, cycle_counter: u32| {
+            if cycle_counter % 2 == 1 {
+                enemy::create_walker(world);
+            } else {
+                enemy::create_shooter(world);
+            }
+            if cycle_counter % 3 == 0 {
+                healing::create_healing_potion(world);
+            }
+            Ok(())
+        };
+        EvilAlligator::new(11, 210, Box::new(entity_factory))
     }
 
     fn update(&mut self, _window: &mut Window) -> Result<()> {
         if self.state == GameState::Running {
             self.update_time_step()?;
 
-            if self.cycle_counter < BOSS_CYCLE {
-                if self.cycle_timer == 0 {
-                    self.music_player.play_music(Music::NormalMusic)?;
-                }
-                self.cycle_timer += 1;
-                if self.cycle_timer % NEW_BODY_CYCLE == 0 {
-                    self.cycle_counter += 1;
-                    if self.cycle_counter == BOSS_CYCLE {
-                        self.music_player.play_music(Music::BossMusic)?;
-                        enemy::create_boss(&mut self.world);
-                    } else {
-                        if self.cycle_counter % 2 == 1 {
-                            enemy::create_walker(&mut self.world);
-                        } else {
-                            enemy::create_shooter(&mut self.world);
-                        }
-                        if self.cycle_counter % 3 == 0 {
-                            healing::create_healing_potion(&mut self.world);
-                        }
-                    }
-                }
-            }
+            self.entity_factory()?;
 
             HeroControlSystem.run_now(&self.world.res);
             WalkSystem.run_now(&self.world.res);
@@ -237,6 +185,85 @@ impl State for EvilAlligator {
 }
 
 impl EvilAlligator {
+    fn new(
+        boss_cycle: u32,
+        new_body_cycle: u64,
+        entity_factory: Box<Fn(&mut World, u32) -> Result<()>>,
+    ) -> Result<EvilAlligator> {
+        let atlas = Rc::new(RefCell::new(Asset::new(Atlas::load(
+            "evil_alligator.atlas",
+        ))));
+        let font = Rc::new(RefCell::new(Asset::new(Font::load("cmunrm.ttf"))));
+        let music_player = MusicPlayer::new()?;
+
+        let mut world = World::new();
+        register_components(&mut world);
+        add_resorces(&mut world);
+
+        create_background(&mut world, "cenario".to_string());
+        create_label(
+            &mut world,
+            LabelVariable::FramesPerSecond,
+            FontStyle::new(48.0, Color::BLACK),
+            Vector::new(20, 587),
+        );
+        create_label(
+            &mut world,
+            LabelVariable::HeroLives,
+            FontStyle::new(48.0, Color::BLACK),
+            Vector::new(10, 20),
+        );
+        create_label(
+            &mut world,
+            LabelVariable::Score,
+            FontStyle::new(48.0, Color::BLACK),
+            Vector::new(730, 20),
+        );
+        let hero = hero::create_hero(&mut world);
+
+        Ok(EvilAlligator {
+            world,
+            atlas,
+            font,
+            hero,
+            state: GameState::Initialiazing,
+            boss_cycle,
+            new_body_cycle,
+            cycle_timer: 0,
+            cycle_counter: 0,
+            music_player,
+            last_instant: Instant::now(),
+            entity_factory,
+        })
+    }
+
+    fn entity_factory(&mut self) -> Result<()> {
+        if self.cycle_counter < self.boss_cycle {
+            if self.cycle_timer == 0 {
+                self.music_player.play_music(Music::NormalMusic)?;
+            }
+            self.cycle_timer += 1;
+            if self.cycle_timer % self.new_body_cycle == 0 {
+                self.cycle_counter += 1;
+                if self.cycle_counter == self.boss_cycle {
+                    self.music_player.play_music(Music::BossMusic)?;
+                    enemy::create_boss(&mut self.world);
+                } else {
+                    (self.entity_factory)(&mut self.world, self.cycle_counter)?;
+                    // if self.cycle_counter % 2 == 1 {
+                    //     enemy::create_walker(&mut self.world);
+                    // } else {
+                    //     enemy::create_shooter(&mut self.world);
+                    // }
+                    // if self.cycle_counter % 3 == 0 {
+                    //     healing::create_healing_potion(&mut self.world);
+                    // }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn update_time_step(&mut self) -> Result<()> {
         let now = Instant::now();
         let time_step = now.duration_since(self.last_instant.clone());
@@ -359,13 +386,41 @@ fn create_label(
 }
 
 fn main() {
-    run::<EvilAlligator>(
+    let entity_factory = |world: &mut World, cycle_counter: u32| {
+        let mut rng = thread_rng();
+        let n: u32 = rng.gen_range(0, 4);
+        match n {
+            0 => enemy::create_walker(world),
+            1 => enemy::create_shooter(world),
+            2 => enemy::create_flyer(world),
+            3 => enemy::create_fireball_shower(world),
+            _ => {}
+        }
+        if cycle_counter % 3 == 0 {
+            healing::create_healing_potion(world);
+        }
+        Ok(())
+    };
+
+    run_with(
         "Evil Alligator",
-        Vector::new(GAME_SCREEN_WIDTH, GAME_SCREEN_HEIGHT),
+        Vector::new(800, 600),
         Settings {
-            icon_path: Some(ICON),
+            icon_path: Some("icone.png"),
             show_cursor: false,
             ..Settings::default()
         },
+        || EvilAlligator::new(20, 125, Box::new(entity_factory)),
     );
+
+    //run classic
+    // run::<EvilAlligator>(
+    //     "Evil Alligator",
+    //     Vector::new(800, 600),
+    //     Settings {
+    //         icon_path: Some("icone.png"),
+    //         show_cursor: false,
+    //         ..Settings::default()
+    //     }
+    // );
 }
