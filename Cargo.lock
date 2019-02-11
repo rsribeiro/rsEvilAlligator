@@ -540,6 +540,17 @@ version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "eangine"
+version = "0.1.0"
+dependencies = [
+ "quicksilver 0.3.6",
+ "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "specs 0.14.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "specs-derive 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "stdweb 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "either"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -620,13 +631,12 @@ dependencies = [
 
 [[package]]
 name = "evil_alligator"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
+ "eangine 0.1.0",
  "quicksilver 0.3.6",
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "specs 0.14.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "specs-derive 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "stdweb 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
