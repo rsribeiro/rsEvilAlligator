@@ -7,7 +7,6 @@ use rand::{thread_rng, Rng};
 use eangine::{
     enemy::FireballShowerConfig,
     healing::HealingConfig,
-    music::MusicPlayerConfig,
     scene::{Scene, SceneConfig},
 };
 
@@ -15,7 +14,7 @@ use specs::World;
 
 use quicksilver::{
     geom::Vector,
-    lifecycle::{run_with, Settings},
+    lifecycle::{run_with, run, Settings},
 };
 
 fn main() {
@@ -55,7 +54,7 @@ fn main() {
         || Scene::new(Box::new(entity_factory), scene_config),
     );
 
-    //run classic
+    // run classic
     // run::<Scene>(
     //     "Evil Alligator",
     //     Vector::new(800, 600),

@@ -1,4 +1,4 @@
 # rsEvilAlligator
 Rust reimplementation of Evil Alligator
 
-https://www.souzaribeiro.com/evilalligator/
+https://rsribeiro.github.io/website/
