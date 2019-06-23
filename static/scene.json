@@ -1,0 +1,25 @@
+{
+  "boss_config": {
+    "lives": 15,
+    "normal_lives": 8,
+    "shooter_config": {
+      "projectile_sprite": "bossfireball",
+      "maximum_projectiles": 3,
+      "projectile_coefficient": [
+        0.075,
+        -0.05
+      ]
+    }
+  },
+  "entity_factory_config": {
+    "factory_type": "Random",
+    "enemy_types": [
+      "Walker",
+      "Shooter",
+      "Flyer",
+      "FireballShower"
+    ]
+  },
+  "boss_cycle": 20,
+  "new_body_cycle": 125
+}
