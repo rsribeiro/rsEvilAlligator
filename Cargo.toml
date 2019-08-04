@@ -1,6 +1,6 @@
 [package]
 name = "evil_alligator"
-version = "0.5.0"
+version = "0.6.1"
 authors = ["Ricardo Ribeiro <ricardo@souzaribeiro.com>"]
 edition = "2018"
 categories = ["game"]
@@ -10,7 +10,7 @@ readme = "README.md"
 repository = "https://github.com/rsribeiro/rsEvilAlligator/"
 
 [dependencies.eangine]
-version = "0.3.0"
+version = "0.5.0"
 
 [patch.crates-io]
 quicksilver = { path = "../quicksilver" }
@@ -18,5 +18,4 @@ eangine = { path = "../EAngine" }
 
 [profile.release]
 lto = true
-opt-level = 's' #web=696KB/exe=1796KB
-#opt-level = 'z' #web=872KB/exe=1639KB
+opt-level = 's'
