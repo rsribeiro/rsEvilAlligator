@@ -4,5 +4,5 @@
 
 Rust reimplementation of Evil Alligator
 
-https://ricardo112358.itch.io/evil-alligator
-https://ricardo112358.itch.io/evil-alligator-2
+* https://ricardo112358.itch.io/evil-alligator
+* https://ricardo112358.itch.io/evil-alligator-2
